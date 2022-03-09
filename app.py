@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import datetime as dt
 from datetime import datetime
-
+from dateutil.relativedelta import relativedelta
 import sqlalchemy
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
@@ -62,6 +62,38 @@ def stations():
     filter(Measurement.station == Station.station).group_by(Measurement.station).order_by(func.count(Measurement.station).desc()).all()
     session.close()
     return jsonify(stationhits)   
-    
+
+@app.route("/api/v1.0/tobs")
+def tobs():
+    session = Session(engine)
+
+    last_measurement_data_point_tuple = session.query(Measurement.date).order_by(Measurement.date.desc()).first()
+    (latest_date, ) = last_measurement_data_point_tuple
+    latest_date = dt.datetime.strptime(latest_date, '%Y-%m-%d')
+    latest_date = latest_date.date()
+    date_year_ago = latest_date - relativedelta(years=1)
+
+    most_active_station = session.query(Measurement.station).\
+        group_by(Measurement.station).\
+        order_by(func.count().desc()).\
+        first()
+
+    (most_active_station_id, ) = most_active_station
+    print(f"The station id of the most active station is {most_active_station_id}.")
+
+    data_from_last_year = session.query(Measurement.date, Measurement.tobs).filter(Measurement.station == most_active_station_id).filter(Measurement.date >= date_year_ago).all()
+    session.close()
+
+    all_temperatures = []
+    for date, temp in data_from_last_year:
+        if temp != None:
+            temp_dict = {}
+            temp_dict[date] = temp
+            all_temperatures.append(temp_dict)
+    # Return the JSON representation of dictionary.
+    return jsonify(all_temperatures)
+
+
+
 if __name__ == "__main__":
     app.run(debug=True)
